@@ -2,6 +2,8 @@
 
 A Streamlit-powered chatbot that simplifies complex text using Microsoft's Phi-3-mini-4k-instruct model. Transform academic papers, technical documents, and complex content into easy-to-understand language.
 
+![Video](https://www.loom.com/share/7a607c64bbaa44bc89fcd960790a1ad8?sid=82212a0f-9b82-4396-82b3-f93dffe4dc42)
+
 ![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/streamlit-v1.28+-red.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -46,6 +48,26 @@ A Streamlit-powered chatbot that simplifies complex text using Microsoft's Phi-3
    - The app will automatically open at `http://localhost:8501`
    - If port 8501 is busy, try: `streamlit run app.py --server.port 8502`
 
+## 🌐 Deployed Model Access
+
+For faster access without local setup, you can use the deployed model directly:
+
+```python
+!pip install llama-cpp-python
+
+from llama_cpp import Llama
+
+llm = Llama.from_pretrained(
+    repo_id="dean-daryl/historical-chatbot-premium",
+    filename="phi-3-mini-4k-instruct.Q4_K_M.gguf",
+)
+llm.create_chat_completion(
+    messages = "What caused the fall of the Roman Empire?"
+)
+```
+
+This deployed version provides instant access without downloading large model files locally.
+
 ## 🎯 Usage
 
 ### Basic Text Simplification
@@ -75,9 +97,11 @@ A Streamlit-powered chatbot that simplifies complex text using Microsoft's Phi-3
 ### Model Architecture
 
 - **Base Model**: Microsoft Phi-3-mini-4k-instruct
-- **Model Size**: ~7GB (downloaded on first run)
+- **Model Format**: GGUF (quantized for efficiency)
+- **Model Size**: ~2.16GB (local) / Instant access (deployed)
 - **Context Length**: 4,096 tokens
 - **Architecture**: Transformer-based causal language model
+- **Deployed Version**: `dean-daryl/historical-chatbot-premium`
 
 ### System Requirements
 
@@ -90,9 +114,10 @@ A Streamlit-powered chatbot that simplifies complex text using Microsoft's Phi-3
 
 ### Performance
 
-- **CPU Mode**: 5-15 seconds per simplification
-- **GPU Mode**: 1-3 seconds per simplification
-- **First Run**: Additional time for model download (~10-15 minutes)
+- **Local CPU**: 30-90 seconds per response (first generation slower)
+- **Local GPU**: 5-15 seconds per response
+- **Deployed Model**: Instant access via Hugging Face
+- **First Run**: Model loads in ~25 seconds locally
 - **Subsequent Runs**: Model cached locally for faster startup
 
 ## 📁 Project Structure
@@ -145,8 +170,11 @@ streamlit run app.py --server.port 8502
 
 **Import Errors**
 ```bash
-# Reinstall dependencies
-pip install --upgrade torch transformers streamlit
+# For local setup
+pip install --upgrade llama-cpp-python streamlit
+
+# For deployed model access
+pip install llama-cpp-python
 ```
 
 **Out of Memory (OOM)**
@@ -172,10 +200,13 @@ pip install --upgrade torch transformers streamlit
 
 ```bash
 # Install development dependencies
-pip install streamlit torch transformers black pytest
+pip install streamlit llama-cpp-python black pytest
 
-# Run tests (if available)
-python -m pytest
+# Test local model
+python test_model.py
+
+# Test deployed model
+python -c "from llama_cpp import Llama; print('Testing deployed model...'); llm = Llama.from_pretrained('dean-daryl/historical-chatbot-premium', 'phi-3-mini-4k-instruct.Q4_K_M.gguf')"
 
 # Format code
 black app.py
@@ -205,12 +236,13 @@ Please simplify this text: [YOUR TEXT]
 
 ## 🔮 Future Enhancements
 
-- [ ] **Multiple Models**: Support for different simplification models
-- [ ] **Batch Processing**: Simplify multiple texts at once
-- [ ] **Reading Level**: Target specific reading levels (grade 3, 5, 8, etc.)
-- [ ] **Export Options**: Save results as PDF, Word, or text files
+- [ ] **Multiple Models**: Support for different history-focused models
+- [ ] **Batch Processing**: Answer multiple history questions at once
+- [ ] **Time Period Filter**: Focus on specific historical eras
+- [ ] **Export Options**: Save conversations as PDF, Word, or text files
 - [ ] **API Integration**: RESTful API for programmatic access
-- [ ] **Custom Training**: Fine-tune models on domain-specific data
+- [ ] **Custom Training**: Fine-tune models on specialized historical datasets
+- [x] **Deployed Access**: Instant model access via Hugging Face Hub
 
 ## 📄 License
 

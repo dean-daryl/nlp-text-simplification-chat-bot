@@ -5,13 +5,14 @@ import random
 
 # Try to import ML libraries with error handling
 try:
-    import torch
-    from transformers import AutoTokenizer, AutoModelForCausalLM
+    from llama_cpp import Llama
+    import os
 
     ML_AVAILABLE = True
-    print("Successfully imported ML libraries")
+    print("Successfully imported llama-cpp-python")
 except ImportError as e:
     print(f"Import error: {e}")
+    print("Please install llama-cpp-python: pip install llama-cpp-python")
     ML_AVAILABLE = False
 except Exception as e:
     print(f"Other error during import: {e}")
@@ -21,7 +22,7 @@ except Exception as e:
 MOCK_MODE = not ML_AVAILABLE
 
 # Page config
-st.set_page_config(page_title="Text Simplifier Bot", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="History Chatbot", page_icon="🤖", layout="wide")
 
 # Custom CSS for chat-like appearance
 st.markdown(
@@ -74,24 +75,30 @@ def load_model():
         st.stop()
 
     try:
-        # Use phi-3-mini-4k-instruct model
-        model_name = "microsoft/Phi-3-mini-4k-instruct"
-        st.info(f"Loading {model_name}... This may take a few minutes on first run.")
+        # Use local GGUF model
+        model_path = "phi-3-mini-4k-instruct.Q4_K_M.gguf"
 
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+        if not os.path.exists(model_path):
+            st.error(f"❌ Local model file not found: {model_path}")
+            st.info("Please ensure the GGUF model file is in the app directory")
+            return None, None, "error"
 
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        st.info(f"Loading local GGUF model: {model_path}")
+
+        # Load GGUF model with llama-cpp-python - optimized for speed
+        model = Llama(
+            model_path=model_path,
+            n_ctx=1024,  # Reduced context for faster inference
+            n_threads=8,  # Use all CPU cores
+            n_gpu_layers=-1,  # Use GPU if available
+            n_batch=512,  # Larger batch size
+            verbose=False,
+            use_mmap=True,  # Memory mapping for faster loading
+            use_mlock=False,  # Don't lock memory
         )
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = model.to(device)
 
-        st.success(f"✅ Model loaded successfully on {device}")
-        return model, tokenizer, device
+        st.success(f"✅ Local GGUF model loaded successfully")
+        return model, None, "cpu"  # GGUF handles tokenization internally
 
     except Exception as e:
         st.error(f"❌ Error loading model: {e}")
@@ -99,52 +106,55 @@ def load_model():
         return None, None, "mock"
 
 
-def simplify_text(model, tokenizer, device, text):
+def answer_history_question(model, tokenizer, device, text):
     if MOCK_MODE or model is None:
-        # Mock simplification - just return a simplified version
+        # Mock history responses - just return a sample answer
         time.sleep(1)  # Simulate processing time
 
         # Simple mock responses
         mock_responses = [
-            "This text has been simplified using mock mode.",
-            "The complex text was made easier to understand.",
-            "This is a simpler version of your text.",
-            "Your text was simplified successfully.",
+            "This is a mock history answer for demo purposes.",
+            "The historical event you asked about is complex and has multiple causes.",
+            "History shows us that this topic involves many interconnected factors.",
+            "Your history question has been processed in mock mode.",
         ]
 
         # Try to make it somewhat realistic
         words = text.split()
-        if len(words) > 20:
-            # For long text, return a shorter version
-            simplified_words = words[: len(words) // 2] + ["and", "more."]
-            return " ".join(simplified_words)
+        if len(words) > 10:
+            # For long questions, return a more detailed answer
+            return "Based on historical records, " + random.choice(mock_responses)
         else:
             return random.choice(mock_responses)
 
-    # Create a prompt for text simplification using Phi-3
-    prompt = f"<|user|>\nPlease simplify this text to make it easier to understand: {text}<|end|>\n<|assistant|>\n"
+    # Create a prompt for history questions using Phi-3
+    prompt = f"<|user|>\nAs a history expert, please answer this question: {text}<|end|>\n<|assistant|>\n"
 
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=3584)
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=512,
-            temperature=0.7,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id,
+    # Use llama-cpp-python for inference
+    try:
+        response = model(
+            prompt,
+            max_tokens=150,  # Shorter responses for speed
+            temperature=0.3,  # Less randomness for faster generation
+            top_p=0.8,
+            top_k=20,  # Limit vocabulary for speed
+            stop=["<|end|>", "<|user|>"],
+            echo=False,
+            repeat_penalty=1.1,
         )
 
-    # Decode and extract the response
-    full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    # Extract just the assistant's response
-    if "<|assistant|>" in full_response:
-        simplified = full_response.split("<|assistant|>")[-1].strip()
-    else:
-        simplified = full_response.strip()
+        # Extract the simplified text from response
+        simplified = response["choices"][0]["text"].strip()
 
-    return simplified
+        # Clean up any remaining tokens
+        if simplified.startswith("<|assistant|>"):
+            simplified = simplified[len("<|assistant|>") :].strip()
+
+        return simplified
+
+    except Exception as e:
+        st.error(f"Error during text generation: {e}")
+        return "Sorry, there was an error simplifying your text."
 
 
 # Initialize chat history
@@ -152,7 +162,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "Hi! I'm your Text Simplifier Bot 🤖 Send me any complex text and I'll make it easier to understand!",
+            "content": "Hi! I'm your History Chatbot 🤖 Ask me anything about history and I'll help you understand it better!",
         }
     ]
 
@@ -162,8 +172,8 @@ with st.spinner("🤖 Bot is starting up..."):
     model, tokenizer, device = load_model()
 
 # Header
-st.title("🤖 Text Simplifier Bot")
-st.caption("Chat with me to simplify your complex text!")
+st.title("🤖 History Chatbot")
+st.caption("Chat with me to explore and understand history!")
 
 # Chat interface
 chat_container = st.container()
@@ -174,7 +184,7 @@ with chat_container:
             st.write(message["content"])
 
 # Chat input
-if prompt := st.chat_input("Type your complex text here..."):
+if prompt := st.chat_input("Ask me about history..."):
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
 
@@ -184,25 +194,25 @@ if prompt := st.chat_input("Type your complex text here..."):
 
     # Generate bot response
     with st.chat_message("assistant"):
-        with st.spinner("🤖 Simplifying your text..."):
+        with st.spinner("🤖 Thinking about history..."):
             start_time = time.time()
-            simplified = simplify_text(model, tokenizer, device, prompt)
+            answer = answer_history_question(model, tokenizer, device, prompt)
             end_time = time.time()
 
-        # Show simplified text
-        st.write(f"**Simplified:** {simplified}")
+        # Show answer
+        st.write(f"**Answer:** {answer}")
 
         # Show stats
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Original words", len(prompt.split()))
         with col2:
-            st.metric("Simplified words", len(simplified.split()))
+            st.metric("Response words", len(answer.split()))
         with col3:
             st.metric("Time", f"{end_time - start_time:.1f}s")
 
         # Add bot response to history
-        bot_response = f"**Simplified:** {simplified}\n\n📊 Original: {len(prompt.split())} words → Simplified: {len(simplified.split())} words"
+        bot_response = f"**Answer:** {answer}\n\n📊 Question: {len(prompt.split())} words → Answer: {len(answer.split())} words"
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
 
 # Sidebar with examples and controls
@@ -210,19 +220,19 @@ with st.sidebar:
     st.header("🎯 Quick Examples")
 
     examples = [
-        "The implementation of sophisticated algorithms requires extensive computational resources.",
-        "Contemporary research demonstrates remarkable progress in natural language processing.",
-        "The proliferation of renewable energy technologies mitigates environmental degradation.",
+        "What caused the fall of the Roman Empire?",
+        "How did the Industrial Revolution change society?",
+        "What were the main causes of World War I?",
     ]
 
     for i, example in enumerate(examples, 1):
         if st.button(f"Example {i}", key=f"ex{i}"):
             st.session_state.messages.append({"role": "user", "content": example})
 
-            with st.spinner("🤖 Processing example..."):
-                simplified = simplify_text(model, tokenizer, device, example)
+            with st.spinner("🤖 Processing history question..."):
+                answer = answer_history_question(model, tokenizer, device, example)
 
-            bot_response = f"**Simplified:** {simplified}\n\n📊 Original: {len(example.split())} words → Simplified: {len(simplified.split())} words"
+            bot_response = f"**Answer:** {answer}\n\n📊 Question: {len(example.split())} words → Answer: {len(answer.split())} words"
             st.session_state.messages.append(
                 {"role": "assistant", "content": bot_response}
             )
@@ -235,7 +245,7 @@ with st.sidebar:
         st.session_state.messages = [
             {
                 "role": "assistant",
-                "content": "Hi! I'm your Text Simplifier Bot 🤖 Send me any complex text and I'll make it easier to understand!",
+                "content": "Hi! I'm your History Chatbot 🤖 Ask me anything about history and I'll help you understand it better!",
             }
         ]
         st.rerun()
@@ -244,7 +254,7 @@ with st.sidebar:
     if MOCK_MODE:
         st.info("🎭 MOCK MODE\n💻 Simulated responses")
     else:
-        st.info(f"🤖 Model: Phi-3-mini-4k-instruct\n💻 Device: {device}")
+        st.info(f"🤖 Model: Phi-3-mini (GGUF)\n💻 Device: Local CPU")
 
     if os.path.exists("Spiece Model.model"):
         st.success("✅ SentencePiece model detected")
