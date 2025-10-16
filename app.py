@@ -96,13 +96,11 @@ def load_model():
     except Exception as e:
         st.error(f"❌ Error loading model: {e}")
         st.info("Falling back to mock mode...")
-        global MOCK_MODE
-        MOCK_MODE = True
         return None, None, "mock"
 
 
 def simplify_text(model, tokenizer, device, text):
-    if MOCK_MODE:
+    if MOCK_MODE or model is None:
         # Mock simplification - just return a simplified version
         time.sleep(1)  # Simulate processing time
 
