@@ -1,8 +1,9 @@
 # 🤖 NLP Text Simplification Bot
 
 A Streamlit-powered chatbot that simplifies complex text using Microsoft's Phi-3-mini-4k-instruct model. Transform academic papers, technical documents, and complex content into easy-to-understand language.
+### Video 
 
-![Video](https://www.loom.com/share/7a607c64bbaa44bc89fcd960790a1ad8?sid=82212a0f-9b82-4396-82b3-f93dffe4dc42)
+https://www.loom.com/share/7a607c64bbaa44bc89fcd960790a1ad8?sid=f89367c2-5147-4fcd-95ec-e378081d0e2b
 
 ![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/streamlit-v1.28+-red.svg)
