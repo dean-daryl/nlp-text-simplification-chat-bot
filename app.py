@@ -6,13 +6,18 @@ import random
 # Try to import ML libraries with error handling
 try:
     import torch
-    from transformers import T5Tokenizer, T5ForConditionalGeneration
+    from transformers import AutoTokenizer, AutoModelForCausalLM
 
     ML_AVAILABLE = True
-except ImportError:
+    print("Successfully imported ML libraries")
+except ImportError as e:
+    print(f"Import error: {e}")
+    ML_AVAILABLE = False
+except Exception as e:
+    print(f"Other error during import: {e}")
     ML_AVAILABLE = False
 
-# Mock mode for deployment testing
+# Mock mode for deployment testing - enable if ML not available
 MOCK_MODE = not ML_AVAILABLE
 
 # Page config
@@ -58,20 +63,42 @@ st.markdown(
 @st.cache_resource
 def load_model():
     if MOCK_MODE:
-        st.warning("🎭 Running in MOCK MODE - using simulated responses for demo")
+        st.warning(
+            "🎭 Running in MOCK MODE - ML libraries not available or model loading failed"
+        )
         return None, None, "mock"
 
+    if not ML_AVAILABLE:
+        st.error("❌ ML libraries (torch/transformers) are not available")
+        st.info("Please install them with: pip install torch transformers")
+        st.stop()
+
     try:
-        # Use distilled model for faster inference
-        model_name = "google/flan-t5-small"
-        tokenizer = T5Tokenizer.from_pretrained(model_name)
-        model = T5ForConditionalGeneration.from_pretrained(model_name)
+        # Use phi-3-mini-4k-instruct model
+        model_name = "microsoft/Phi-3-mini-4k-instruct"
+        st.info(f"Loading {model_name}... This may take a few minutes on first run.")
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            trust_remote_code=True,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        )
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = model.to(device)
+
+        st.success(f"✅ Model loaded successfully on {device}")
         return model, tokenizer, device
+
     except Exception as e:
-        st.error(f"Error loading model: {e}")
-        st.stop()
+        st.error(f"❌ Error loading model: {e}")
+        st.info("Falling back to mock mode...")
+        global MOCK_MODE
+        MOCK_MODE = True
+        return None, None, "mock"
 
 
 def simplify_text(model, tokenizer, device, text):
@@ -96,18 +123,30 @@ def simplify_text(model, tokenizer, device, text):
         else:
             return random.choice(mock_responses)
 
-    input_text = f"simplify: {text}"
-    input_ids = tokenizer.encode(
-        input_text, return_tensors="pt", max_length=512, truncation=True
-    )
-    input_ids = input_ids.to(device)
+    # Create a prompt for text simplification using Phi-3
+    prompt = f"<|user|>\nPlease simplify this text to make it easier to understand: {text}<|end|>\n<|assistant|>\n"
+
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=3584)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
         outputs = model.generate(
-            input_ids, max_length=256, num_beams=4, early_stopping=True, do_sample=False
+            **inputs,
+            max_new_tokens=512,
+            temperature=0.7,
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id,
         )
 
-    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Decode and extract the response
+    full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Extract just the assistant's response
+    if "<|assistant|>" in full_response:
+        simplified = full_response.split("<|assistant|>")[-1].strip()
+    else:
+        simplified = full_response.strip()
+
+    return simplified
 
 
 # Initialize chat history
@@ -207,7 +246,7 @@ with st.sidebar:
     if MOCK_MODE:
         st.info("🎭 MOCK MODE\n💻 Simulated responses")
     else:
-        st.info(f"🤖 Model: FLAN-T5-small\n💻 Device: {device}")
+        st.info(f"🤖 Model: Phi-3-mini-4k-instruct\n💻 Device: {device}")
 
     if os.path.exists("Spiece Model.model"):
         st.success("✅ SentencePiece model detected")
